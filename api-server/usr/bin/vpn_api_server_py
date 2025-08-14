@@ -43,7 +43,10 @@ class VPNAPIHandler(http.server.BaseHTTPRequestHandler):
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps(response).encode())
+                try:
+                    self.wfile.write(json.dumps(response).encode())
+                except BrokenPipeError:
+                    self.log_message("Client disconnected during response write")
                 
             except Exception as e:
                 self.send_response(500)
@@ -83,17 +86,15 @@ class VPNAPIHandler(http.server.BaseHTTPRequestHandler):
                     if pre_res.returncode != 0:
                         self.log_message(f"PRE_CONNECT failed: {pre_res.stderr}")
 
-                # Re-apply configuration (mirrors boot sequence: nord_config)
-                self.log_message("Re-applying NordVPN configuration via /usr/bin/nord_config")
-                cfg_res = run_shell('/usr/bin/nord_config', timeout=30)
-                if cfg_res.returncode != 0:
-                    self.log_message(f"nord_config returned non-zero: {cfg_res.stderr.strip()}")
-
                 # Disconnect first
-                subprocess.run(['nordvpn', 'disconnect'], capture_output=True, timeout=10)
-                time.sleep(2)
+                self.log_message("Disconnecting current VPN connection")
+                disconnect_result = subprocess.run(['nordvpn', 'disconnect'], 
+                                                 capture_output=True, text=True, timeout=10)
+                self.log_message(f"Disconnect result: {disconnect_result.stdout.strip()}")
+                time.sleep(3)
                 
                 # Connect to new country (allow more time)
+                self.log_message(f"Connecting to {country}")
                 result = subprocess.run(['nordvpn', 'connect', country],
                                       capture_output=True, text=True, timeout=90)
                 
@@ -120,7 +121,10 @@ class VPNAPIHandler(http.server.BaseHTTPRequestHandler):
                 
                 self.send_header('Content-type', 'application/json')
                 self.end_headers()
-                self.wfile.write(json.dumps(response).encode())
+                try:
+                    self.wfile.write(json.dumps(response).encode())
+                except BrokenPipeError:
+                    self.log_message("Client disconnected during response write")
                 
             except Exception as e:
                 self.log_message(f"VPN switch error: {str(e)}")
