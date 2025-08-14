@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# Simple HTTP API server for VPN control
+# Listens on port 8080 and accepts VPN switching commands
+
+API_PORT=${VPN_API_PORT:-8080}
+LOG_FILE="/tmp/vpn_api.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+handle_request() {
+    local method="$1"
+    local path="$2"
+    local body="$3"
+    
+    log "API Request: $method $path"
+    
+    case "$path" in
+        "/switch")
+            handle_switch_request "$body"
+            ;;
+        "/status")
+            handle_status_request
+            ;;
+        "/health")
+            echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"healthy\"}"
+            ;;
+        *)
+            echo -e "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{\"error\":\"Not found\"}"
+            ;;
+    esac
+}
+
+handle_switch_request() {
+    local body="$1"
+    
+    # Extract country from request body or use default rotation
+    local country=""
+    if [[ "$body" =~ country.*:.*\"([a-z]+)\" ]]; then
+        country="${BASH_REMATCH[1]}"
+    fi
+    
+    if [ -z "$country" ]; then
+        # Rotate through allowed countries
+        local countries=("uk" "nl" "de")
+        local current_time=$(date +%s)
+        local index=$((current_time % 3))
+        country="${countries[$index]}"
+    fi
+    
+    log "Switching VPN to: $country"
+    
+    # Disconnect and reconnect
+    nordvpn disconnect >/dev/null 2>&1
+    sleep 2
+    
+    if nordvpn connect "$country" >/dev/null 2>&1; then
+        local status=$(nordvpn status 2>/dev/null)
+        log "VPN switched successfully to $country"
+        echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"success\":true,\"country\":\"$country\",\"status\":\"$status\"}"
+    else
+        log "VPN switch failed for $country"
+        echo -e "HTTP/1.1 500 Internal Server Error\r\nContent-Type: application/json\r\n\r\n{\"success\":false,\"error\":\"Failed to connect to $country\"}"
+    fi
+}
+
+handle_status_request() {
+    local status=$(nordvpn status 2>/dev/null || echo "Disconnected")
+    local ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "unknown")
+    
+    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"$status\",\"ip\":\"$ip\"}"
+}
+
+start_server() {
+    log "Starting VPN API server on port $API_PORT"
+    
+    while true; do
+        {
+            # Read HTTP request
+            read -r request_line
+            method=$(echo "$request_line" | cut -d' ' -f1)
+            path=$(echo "$request_line" | cut -d' ' -f2)
+            
+            # Read headers until empty line
+            content_length=0
+            while IFS= read -r header && [ "$header" != $'\r' ]; do
+                if [[ "$header" =~ ^Content-Length:\ ([0-9]+) ]]; then
+                    content_length="${BASH_REMATCH[1]}"
+                fi
+            done
+            
+            # Read body if present
+            body=""
+            if [ "$content_length" -gt 0 ]; then
+                body=$(head -c "$content_length")
+            fi
+            
+            # Handle the request
+            handle_request "$method" "$path" "$body"
+            
+        } | nc -l -p "$API_PORT" -q 1
+        
+        # Small delay to prevent busy waiting
+        sleep 0.1
+    done
+}
+
+# Start the API server
+start_server

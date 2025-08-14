@@ -1,0 +1,7 @@
+#!/usr/bin/with-contenv bash
+
+# Wait for NordVPN to be ready
+sleep 30
+
+# Start the Python VPN API server as root (needed for nordvpn commands)
+exec python3 /usr/bin/vpn_api_server_py 8080

@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# Improved HTTP API server for VPN control
+API_PORT=${VPN_API_PORT:-8080}
+LOG_FILE="/tmp/vpn_api.log"
+
+log() {
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+}
+
+send_response() {
+    local code="$1"
+    local content="$2"
+    local content_type="${3:-application/json}"
+    
+    echo -ne "HTTP/1.1 $code\r\n"
+    echo -ne "Content-Type: $content_type\r\n"
+    echo -ne "Content-Length: ${#content}\r\n"
+    echo -ne "Connection: close\r\n"
+    echo -ne "\r\n"
+    echo -n "$content"
+}
+
+handle_switch() {
+    log "VPN switch requested"
+    
+    # Rotate through countries
+    local countries=("uk" "nl" "de")
+    local current_time=$(date +%s)
+    local index=$((current_time % 3))
+    local country="${countries[$index]}"
+    
+    log "Switching VPN to: $country"
+    
+    # Disconnect and reconnect
+    if nordvpn disconnect >/dev/null 2>&1; then
+        sleep 2
+        if nordvpn connect "$country" >/dev/null 2>&1; then
+            log "VPN switched successfully to $country"
+            send_response "200 OK" "{\"success\":true,\"country\":\"$country\"}"
+        else
+            log "VPN connect failed for $country"
+            send_response "500 Internal Server Error" "{\"success\":false,\"error\":\"Failed to connect\"}"
+        fi
+    else
+        log "VPN disconnect failed"
+        send_response "500 Internal Server Error" "{\"success\":false,\"error\":\"Failed to disconnect\"}"
+    fi
+}
+
+handle_status() {
+    local status=$(nordvpn status 2>/dev/null | head -1 || echo "Disconnected")
+    local ip=$(curl -s --max-time 5 ifconfig.me 2>/dev/null || echo "unknown")
+    
+    send_response "200 OK" "{\"status\":\"$status\",\"ip\":\"$ip\"}"
+}
+
+handle_health() {
+    send_response "200 OK" "{\"status\":\"healthy\"}"
+}
+
+# Start server using socat for better HTTP handling
+log "Starting VPN API server on port $API_PORT using socat"
+
+while true; do
+    socat TCP-LISTEN:$API_PORT,reuseaddr,fork EXEC:'/bin/bash -c "
+        read request_line
+        method=\$(echo \"\$request_line\" | cut -d\" \" -f1)
+        path=\$(echo \"\$request_line\" | cut -d\" \" -f2)
+        
+        # Skip headers
+        while IFS= read -r line && [ \"\$line\" != \$\"\\r\" ]; do true; done
+        
+        case \"\$path\" in
+            \"/switch\")
+                '"$(declare -f log send_response handle_switch)"'
+                handle_switch
+                ;;
+            \"/status\")
+                '"$(declare -f log send_response handle_status)"'
+                handle_status
+                ;;
+            \"/health\")
+                '"$(declare -f log send_response handle_health)"'
+                handle_health
+                ;;
+            *)
+                send_response \"404 Not Found\" \"{\\\"error\\\":\\\"Not found\\\"}\"
+                ;;
+        esac
+    "' 2>/dev/null || {
+        log "Server error, restarting in 5 seconds..."
+        sleep 5
+    }
+done

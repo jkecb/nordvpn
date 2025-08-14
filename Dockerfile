@@ -5,7 +5,7 @@ ARG NORDVPN_VERSION=4.0.0
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update -y && \
-    apt-get install -y curl iputils-ping libc6 wireguard && \
+    apt-get install -y curl iputils-ping libc6 wireguard netcat-openbsd python3 socat && \
     curl https://repo.nordvpn.com/deb/nordvpn/debian/pool/main/n/nordvpn-release/nordvpn-release_1.0.0_all.deb --output /tmp/nordrepo.deb && \
     apt-get install -y /tmp/nordrepo.deb && \
     apt-get update -y && \
@@ -20,12 +20,15 @@ RUN apt-get update -y && \
 		/var/tmp/*
 
 COPY /rootfs /
-RUN chmod +x /etc/cont-init.d/* /etc/services.d/nordvpn/* \
+RUN chmod +x /etc/cont-init.d/* /etc/services.d/nordvpn/* /etc/services.d/vpn-api/* \
     /usr/bin/dockerNetworks /usr/bin/dockerNetworks6 /usr/bin/nord_config /usr/bin/nord_connect /usr/bin/nord_login /usr/bin/nord_migrate /usr/bin/nord_watch \
-    /etc/services.d/nordvpn/data/check /usr/bin/healthcheck
+    /etc/services.d/nordvpn/data/check /usr/bin/healthcheck /usr/bin/vpn_api_server /usr/bin/vpn_api_server_py
 
 HEALTHCHECK --interval=60s --timeout=15s --start-period=120s \
             CMD /usr/bin/healthcheck
+
+# Expose API port for VPN control
+EXPOSE 8080
 
 ENV S6_CMD_WAIT_FOR_SERVICES=1
 CMD nord_login && nord_config && nord_connect && nord_migrate && nord_watch
