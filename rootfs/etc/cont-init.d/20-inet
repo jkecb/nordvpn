@@ -29,9 +29,13 @@ for net in "${networks[@]}"; do
   iptables -A OUTPUT -o "${network[0]}" -d "${network[1]}" -j ACCEPT
 done
 iptables -A OUTPUT -o eth0 -p udp -m udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -o eth0 -p tcp -m tcp --dport 53 -j ACCEPT
 iptables -A OUTPUT -o nordlynx+ -p udp -m udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -o nordlynx+ -p tcp -m tcp --dport 53 -j ACCEPT
 iptables -A OUTPUT -o tun+ -p udp -m udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -o tun+ -p tcp -m tcp --dport 53 -j ACCEPT
 iptables -A OUTPUT -o tap+ -p udp -m udp --dport 53 -j ACCEPT
+iptables -A OUTPUT -o tap+ -p tcp -m tcp --dport 53 -j ACCEPT
 iptables -A OUTPUT -o eth0 -p udp -m udp --dport 51820 -j ACCEPT
 iptables -A OUTPUT -o eth0 -p tcp -m tcp --dport 1194 -j ACCEPT
 iptables -A OUTPUT -o eth0 -p udp -m udp --dport 1194 -j ACCEPT
