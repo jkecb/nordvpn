@@ -1,0 +1,19 @@
+FROM ghcr.io/bubuntux/nordvpn:latest
+
+# Install additional dependencies for API server
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends python3 socat netcat-openbsd curl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy API server files
+COPY api-server/ /
+
+# Make scripts executable
+RUN chmod +x /etc/services.d/vpn-api/* /usr/bin/vpn_api_server*
+
+# Expose API port
+EXPOSE 8080
+
+# Environment variable for API port
+ENV VPN_API_PORT=8080
