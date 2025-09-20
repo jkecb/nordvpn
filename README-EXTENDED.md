@@ -1,6 +1,6 @@
 # NordVPN Docker with HTTP API
 
-This is an extended version of the popular [bubuntux/nordvpn](https://github.com/bubuntux/nordvpn) Docker image that adds HTTP API endpoints for external VPN control from other Docker containers.
+This is an extended version of the popular [bubuntux/nordvpn](https://github.com/bubuntux/nordvpn) Docker image that adds HTTP API endpoints for external VPN control from other Docker containers. Latest build is at jackiejke/nordvpn:latest
 
 ## Features
 
